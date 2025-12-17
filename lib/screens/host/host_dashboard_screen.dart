@@ -42,7 +42,12 @@ class HostDashboardScreen extends StatelessWidget {
             body: TabBarView(
               children: [
                 _PartyInfoTab(party: party, provider: provider),
-                _WinesTab(wines: provider.wines, party: party),
+                _WinesTab(
+                  wines: provider.wines,
+                  party: party,
+                  judges: provider.judges,
+                  provider: provider,
+                ),
                 _RankingsTab(
                   rankings: provider.getRankings(),
                   party: party,
@@ -541,8 +546,24 @@ class _StatCard extends StatelessWidget {
 class _WinesTab extends StatelessWidget {
   final List<Wine> wines;
   final Party party;
+  final List<Judge> judges;
+  final PartyProvider provider;
 
-  const _WinesTab({required this.wines, required this.party});
+  const _WinesTab({
+    required this.wines,
+    required this.party,
+    required this.judges,
+    required this.provider,
+  });
+
+  String _getSubmitterName(String registeredById) {
+    try {
+      final judge = judges.firstWhere((j) => j.id == registeredById);
+      return judge.name;
+    } catch (e) {
+      return 'Unknown';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -574,6 +595,99 @@ class _WinesTab extends StatelessWidget {
       );
     }
 
+    // During registration, host can see details and reorder
+    if (party.isRegistering) {
+      return Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Card(
+              color: Colors.amber.shade50,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    Icon(Icons.drag_indicator, color: Colors.amber.shade800),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Drag wines to reorder before starting the party',
+                        style: TextStyle(color: Colors.amber.shade900),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: ReorderableListView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: wines.length,
+              onReorder: (oldIndex, newIndex) {
+                if (newIndex > oldIndex) newIndex--;
+                final reorderedWines = List<Wine>.from(wines);
+                final wine = reorderedWines.removeAt(oldIndex);
+                reorderedWines.insert(newIndex, wine);
+                provider.reorderWines(reorderedWines);
+              },
+              itemBuilder: (context, index) {
+                final wine = wines[index];
+                final submitterName = _getSubmitterName(wine.registeredBy);
+                return Card(
+                  key: ValueKey(wine.id),
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: Colors.deepPurple.shade100,
+                      child: Text(
+                        '${wine.blindNumber}',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.deepPurple.shade900,
+                        ),
+                      ),
+                    ),
+                    title: Text(
+                      wine.name,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (wine.winery != null || wine.vintage != null || wine.varietal != null)
+                          Text(
+                            [
+                              if (wine.winery != null) wine.winery,
+                              if (wine.vintage != null) wine.vintage,
+                              if (wine.varietal != null) wine.varietal,
+                            ].where((e) => e != null).join(' • '),
+                            style: TextStyle(color: Colors.grey.shade600),
+                          ),
+                        Text(
+                          'Submitted by: $submitterName',
+                          style: TextStyle(
+                            color: Colors.deepPurple.shade600,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ],
+                    ),
+                    trailing: ReorderableDragStartListener(
+                      index: index,
+                      child: Icon(Icons.drag_handle, color: Colors.grey),
+                    ),
+                    isThreeLine: wine.winery != null || wine.vintage != null || wine.varietal != null,
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      );
+    }
+
+    // After party starts, show blind view (or revealed if results shown)
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: wines.length,
