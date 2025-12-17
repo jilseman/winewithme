@@ -28,6 +28,11 @@ class JudgeDashboardScreen extends StatelessWidget {
   }
 
   Widget _buildForStatus(BuildContext context, Party party, PartyProvider provider) {
+    // Check if results are revealed first (takes priority over locked status)
+    if (party.resultsRevealed) {
+      return _RevealedPhaseUI(party: party, provider: provider);
+    }
+
     switch (party.status) {
       case PartyStatus.registering:
         return _RegistrationPhaseUI(party: party, provider: provider);
@@ -273,6 +278,270 @@ class _LockedPhaseUI extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// UI shown when results are revealed
+class _RevealedPhaseUI extends StatelessWidget {
+  final Party party;
+  final PartyProvider provider;
+
+  const _RevealedPhaseUI({required this.party, required this.provider});
+
+  @override
+  Widget build(BuildContext context) {
+    final rankings = provider.getRankings();
+    final currentJudge = provider.currentJudge;
+
+    // Find if current user's wine won or came last
+    String? awardMessage;
+    Color? awardColor;
+    IconData? awardIcon;
+
+    if (rankings.isNotEmpty && currentJudge != null) {
+      final winnerWine = rankings.first;
+      final loserWine = rankings.last;
+
+      // Check if current user submitted the winning wine
+      if (winnerWine.wine.registeredBy == currentJudge.id && winnerWine.numberOfRatings > 0) {
+        awardMessage = "Congratulations! Your wine won!";
+        awardColor = Colors.amber;
+        awardIcon = Icons.emoji_events;
+      }
+      // Check if current user submitted the last place wine (only if more than 1 wine)
+      else if (rankings.length > 1 &&
+               loserWine.wine.registeredBy == currentJudge.id &&
+               loserWine.numberOfRatings > 0) {
+        awardMessage = "You won the 'Tastes Like Feet' Award!";
+        awardColor = Colors.brown;
+        awardIcon = Icons.sentiment_very_dissatisfied;
+      }
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(party.name),
+        backgroundColor: Colors.deepPurple.shade900,
+        foregroundColor: Colors.white,
+        leading: IconButton(
+          icon: const Icon(Icons.exit_to_app),
+          onPressed: () {
+            provider.leaveParty();
+            Navigator.pop(context);
+          },
+        ),
+      ),
+      body: Column(
+        children: [
+          // Results revealed banner
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            color: Colors.amber.shade100,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.celebration, size: 18, color: Colors.amber.shade800),
+                const SizedBox(width: 8),
+                Text(
+                  'Results are in! Check out the rankings!',
+                  style: TextStyle(
+                    color: Colors.amber.shade900,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Award notification if applicable
+          if (awardMessage != null)
+            _buildAwardBanner(awardMessage, awardColor!, awardIcon!),
+          Expanded(
+            child: _ResultsTab(
+              rankings: rankings,
+              provider: provider,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAwardBanner(String message, Color color, IconData icon) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [color.withOpacity(0.8), color],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, size: 48, color: Colors.white),
+          const SizedBox(height: 8),
+          Text(
+            message,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Tab showing final results with rankings
+class _ResultsTab extends StatelessWidget {
+  final List<WineRanking> rankings;
+  final PartyProvider provider;
+
+  const _ResultsTab({required this.rankings, required this.provider});
+
+  String _getSubmitterName(String registeredById) {
+    try {
+      final judge = provider.judges.firstWhere((j) => j.id == registeredById);
+      return judge.name;
+    } catch (e) {
+      return 'Unknown';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (rankings.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.leaderboard_outlined, size: 64, color: Colors.grey.shade400),
+            const SizedBox(height: 16),
+            Text(
+              'No rankings available',
+              style: TextStyle(fontSize: 18, color: Colors.grey.shade600),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: rankings.length,
+      itemBuilder: (context, index) {
+        final ranking = rankings[index];
+        final submitterName = _getSubmitterName(ranking.wine.registeredBy);
+
+        return Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                _buildRankBadge(ranking.rank),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        ranking.wine.name,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      if (ranking.wine.winery != null ||
+                          ranking.wine.vintage != null ||
+                          ranking.wine.varietal != null)
+                        Text(
+                          [
+                            if (ranking.wine.winery != null) ranking.wine.winery,
+                            if (ranking.wine.vintage != null) ranking.wine.vintage,
+                            if (ranking.wine.varietal != null) ranking.wine.varietal,
+                          ].where((e) => e != null).join(' • '),
+                          style: TextStyle(color: Colors.grey.shade600),
+                        ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Brought by: $submitterName',
+                        style: TextStyle(
+                          color: Colors.deepPurple.shade600,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      ranking.formattedAverage,
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.deepPurple.shade900,
+                      ),
+                    ),
+                    Text(
+                      '${ranking.numberOfRatings} ratings',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildRankBadge(int rank) {
+    Color color;
+    IconData? icon;
+
+    switch (rank) {
+      case 1:
+        color = Colors.amber;
+        icon = Icons.emoji_events;
+        break;
+      case 2:
+        color = Colors.grey.shade400;
+        icon = Icons.emoji_events;
+        break;
+      case 3:
+        color = Colors.brown.shade300;
+        icon = Icons.emoji_events;
+        break;
+      default:
+        color = Colors.deepPurple.shade100;
+        icon = null;
+    }
+
+    return CircleAvatar(
+      radius: 24,
+      backgroundColor: color,
+      child: icon != null
+          ? Icon(icon, color: Colors.white, size: 24)
+          : Text(
+              '#$rank',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.deepPurple.shade900,
+              ),
+            ),
     );
   }
 }
