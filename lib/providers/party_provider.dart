@@ -48,6 +48,17 @@ class PartyProvider extends ChangeNotifier {
         .join();
   }
 
+  // Helper to update party in storage
+  Future<void> _updateParty(Party party) async {
+    _currentParty = party;
+    final index = _parties.indexWhere((p) => p.id == party.id);
+    if (index != -1) {
+      _parties[index] = party;
+      await _storage.saveParties(_parties);
+    }
+    notifyListeners();
+  }
+
   // Host Functions
 
   Future<Party> createParty(String name, String hostName) async {
@@ -58,6 +69,7 @@ class PartyProvider extends ChangeNotifier {
       hostName: hostName,
       partyCode: _generatePartyCode(),
       createdAt: DateTime.now(),
+      status: PartyStatus.registering,
     );
 
     _parties.add(party);
@@ -91,27 +103,52 @@ class PartyProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> togglePartyActive() async {
+  /// Start the party - enables scoring
+  Future<void> startParty() async {
     if (_currentParty == null) return;
+    await _updateParty(_currentParty!.copyWith(status: PartyStatus.active));
+  }
 
-    _currentParty = _currentParty!.copyWith(isActive: !_currentParty!.isActive);
-    final index = _parties.indexWhere((p) => p.id == _currentParty!.id);
-    if (index != -1) {
-      _parties[index] = _currentParty!;
-      await _storage.saveParties(_parties);
-    }
-    notifyListeners();
+  /// Lock the party - disables scoring
+  Future<void> lockParty() async {
+    if (_currentParty == null) return;
+    await _updateParty(_currentParty!.copyWith(status: PartyStatus.locked));
+  }
+
+  /// Unlock the party - re-enables scoring
+  Future<void> unlockParty() async {
+    if (_currentParty == null) return;
+    await _updateParty(_currentParty!.copyWith(status: PartyStatus.active));
+  }
+
+  /// Reopen registration (go back to registering state)
+  Future<void> reopenRegistration() async {
+    if (_currentParty == null) return;
+    await _updateParty(_currentParty!.copyWith(status: PartyStatus.registering));
   }
 
   Future<void> revealResults() async {
     if (_currentParty == null) return;
+    await _updateParty(_currentParty!.copyWith(resultsRevealed: true));
+  }
 
-    _currentParty = _currentParty!.copyWith(resultsRevealed: true);
-    final index = _parties.indexWhere((p) => p.id == _currentParty!.id);
-    if (index != -1) {
-      _parties[index] = _currentParty!;
-      await _storage.saveParties(_parties);
+  /// Reorder wines - update blind numbers
+  Future<void> reorderWines(List<Wine> reorderedWines) async {
+    if (_currentParty == null) return;
+
+    // Update blind numbers based on new order
+    List<Wine> updatedWines = [];
+    for (int i = 0; i < reorderedWines.length; i++) {
+      updatedWines.add(reorderedWines[i].copyWith(blindNumber: i + 1));
     }
+
+    _wines = updatedWines;
+
+    // Save all wines (replace wines for this party)
+    final allWines = await _storage.getWines();
+    final otherWines = allWines.where((w) => w.partyId != _currentParty!.id).toList();
+    await _storage.saveWines([...otherWines, ..._wines]);
+
     notifyListeners();
   }
 
@@ -172,24 +209,24 @@ class PartyProvider extends ChangeNotifier {
     }).toList();
   }
 
-  // Judge Functions
+  // Attendee Functions
 
-  Future<bool> joinParty(String partyCode, String judgeName) async {
+  Future<bool> joinParty(String partyCode, String attendeeName) async {
     final party = await _storage.getPartyByCode(partyCode);
     if (party == null) return false;
 
     _currentParty = party;
 
-    // Create or update judge
+    // Create or update attendee (still using Judge model internally)
     _currentJudge = Judge(
       id: _uuid.v4(),
-      name: judgeName,
+      name: attendeeName,
       partyId: party.id,
     );
 
     await _storage.saveCurrentJudge(_currentJudge);
 
-    // Add judge to party's judge list
+    // Add attendee to party's list
     _judges = await _storage.getJudgesForParty(party.id);
     _judges.add(_currentJudge!);
 
@@ -245,6 +282,7 @@ class PartyProvider extends ChangeNotifier {
 
   Future<void> submitScore(String wineId, double rating, String? notes) async {
     if (_currentParty == null || _currentJudge == null) return;
+    if (!_currentParty!.canScore) return; // Only allow scoring when party is active
 
     // Check if already scored
     final existingIndex = _scores.indexWhere(

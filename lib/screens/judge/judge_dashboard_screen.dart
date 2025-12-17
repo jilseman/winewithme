@@ -13,48 +13,179 @@ class JudgeDashboardScreen extends StatelessWidget {
     return Consumer<PartyProvider>(
       builder: (context, provider, child) {
         final party = provider.currentParty;
-        final judge = provider.currentJudge;
+        final attendee = provider.currentJudge;
 
-        if (party == null || judge == null) {
+        if (party == null || attendee == null) {
           return Scaffold(
             body: Center(child: Text('Session expired')),
           );
         }
 
-        return DefaultTabController(
-          length: 2,
-          child: Scaffold(
-            appBar: AppBar(
-              title: Text(party.name),
-              backgroundColor: Colors.deepPurple.shade900,
-              foregroundColor: Colors.white,
-              leading: IconButton(
-                icon: const Icon(Icons.exit_to_app),
-                onPressed: () => _confirmLeave(context, provider),
-              ),
-              bottom: const TabBar(
-                labelColor: Colors.white,
-                unselectedLabelColor: Colors.white60,
-                indicatorColor: Colors.amber,
-                tabs: [
-                  Tab(icon: Icon(Icons.rate_review), text: 'Rate Wines'),
-                  Tab(icon: Icon(Icons.add_circle), text: 'Register Wine'),
+        // Different UI based on party status
+        return _buildForStatus(context, party, provider);
+      },
+    );
+  }
+
+  Widget _buildForStatus(BuildContext context, Party party, PartyProvider provider) {
+    switch (party.status) {
+      case PartyStatus.registering:
+        return _RegistrationPhaseUI(party: party, provider: provider);
+      case PartyStatus.active:
+        return _ScoringPhaseUI(party: party, provider: provider);
+      case PartyStatus.locked:
+        return _LockedPhaseUI(party: party, provider: provider);
+    }
+  }
+}
+
+/// UI shown during registration phase - view wines and register your own
+class _RegistrationPhaseUI extends StatelessWidget {
+  final Party party;
+  final PartyProvider provider;
+
+  const _RegistrationPhaseUI({required this.party, required this.provider});
+
+  @override
+  Widget build(BuildContext context) {
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(party.name),
+          backgroundColor: Colors.deepPurple.shade900,
+          foregroundColor: Colors.white,
+          leading: IconButton(
+            icon: const Icon(Icons.exit_to_app),
+            onPressed: () => _confirmLeave(context, provider),
+          ),
+          bottom: const TabBar(
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white60,
+            indicatorColor: Colors.amber,
+            tabs: [
+              Tab(icon: Icon(Icons.wine_bar), text: 'All Wines'),
+              Tab(icon: Icon(Icons.add_circle), text: 'Register Wine'),
+            ],
+          ),
+        ),
+        body: Column(
+          children: [
+            // Status banner
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              color: Colors.blue.shade100,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.hourglass_empty, size: 18, color: Colors.blue.shade800),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Waiting for host to start the party...',
+                    style: TextStyle(
+                      color: Colors.blue.shade800,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
                 ],
               ),
             ),
-            body: TabBarView(
+            Expanded(
+              child: TabBarView(
+                children: [
+                  _AllWinesTab(wines: provider.wines),
+                  _RegisterWineTab(party: party, provider: provider),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _confirmLeave(BuildContext context, PartyProvider provider) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Leave Party?'),
+        content: const Text(
+          'You can rejoin anytime with the party code.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Stay'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              provider.leaveParty();
+              Navigator.pop(context);
+              Navigator.pop(context);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Leave'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// UI shown during scoring phase - rate wines
+class _ScoringPhaseUI extends StatelessWidget {
+  final Party party;
+  final PartyProvider provider;
+
+  const _ScoringPhaseUI({required this.party, required this.provider});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(party.name),
+        backgroundColor: Colors.deepPurple.shade900,
+        foregroundColor: Colors.white,
+        leading: IconButton(
+          icon: const Icon(Icons.exit_to_app),
+          onPressed: () => _confirmLeave(context, provider),
+        ),
+      ),
+      body: Column(
+        children: [
+          // Status banner
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            color: Colors.green.shade100,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _RateWinesTab(
-                  wines: provider.wines,
-                  party: party,
-                  provider: provider,
+                Icon(Icons.how_to_vote, size: 18, color: Colors.green.shade800),
+                const SizedBox(width: 8),
+                Text(
+                  'Scoring is open! Rate each wine below.',
+                  style: TextStyle(
+                    color: Colors.green.shade800,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
-                _RegisterWineTab(),
               ],
             ),
           ),
-        );
-      },
+          Expanded(
+            child: _RateWinesTab(
+              wines: provider.wines,
+              party: party,
+              provider: provider,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -89,6 +220,251 @@ class JudgeDashboardScreen extends StatelessWidget {
   }
 }
 
+/// UI shown when scoring is locked
+class _LockedPhaseUI extends StatelessWidget {
+  final Party party;
+  final PartyProvider provider;
+
+  const _LockedPhaseUI({required this.party, required this.provider});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(party.name),
+        backgroundColor: Colors.deepPurple.shade900,
+        foregroundColor: Colors.white,
+        leading: IconButton(
+          icon: const Icon(Icons.exit_to_app),
+          onPressed: () {
+            provider.leaveParty();
+            Navigator.pop(context);
+          },
+        ),
+      ),
+      body: Column(
+        children: [
+          // Status banner
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            color: Colors.grey.shade200,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.lock, size: 18, color: Colors.grey.shade700),
+                const SizedBox(width: 8),
+                Text(
+                  'Scoring is locked. Waiting for results...',
+                  style: TextStyle(
+                    color: Colors.grey.shade700,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: _YourScoresTab(
+              wines: provider.wines,
+              provider: provider,
+              party: party,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Tab showing all registered wines (read-only)
+class _AllWinesTab extends StatelessWidget {
+  final List<Wine> wines;
+
+  const _AllWinesTab({required this.wines});
+
+  @override
+  Widget build(BuildContext context) {
+    if (wines.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.wine_bar_outlined,
+              size: 64,
+              color: Colors.grey.shade400,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'No wines registered yet',
+              style: TextStyle(
+                fontSize: 18,
+                color: Colors.grey.shade600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Be the first to register a wine!',
+              style: TextStyle(color: Colors.grey.shade500),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: wines.length,
+      itemBuilder: (context, index) {
+        final wine = wines[index];
+        return Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          child: ListTile(
+            leading: CircleAvatar(
+              backgroundColor: Colors.deepPurple.shade100,
+              child: Text(
+                '${wine.blindNumber}',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.deepPurple.shade900,
+                ),
+              ),
+            ),
+            title: Text(
+              'Wine #${wine.blindNumber}',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            subtitle: const Text('Details hidden until reveal'),
+            trailing: Icon(Icons.visibility_off, color: Colors.grey.shade400),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Tab for registering wines
+class _RegisterWineTab extends StatelessWidget {
+  final Party party;
+  final PartyProvider provider;
+
+  const _RegisterWineTab({required this.party, required this.provider});
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Icon(
+            Icons.wine_bar,
+            size: 64,
+            color: Colors.deepPurple.shade300,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Register Your Wine',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.deepPurple.shade900,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Details will be hidden until the host reveals results',
+            style: TextStyle(color: Colors.grey.shade600),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 24),
+          SizedBox(
+            height: 56,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const RegisterWineScreen(),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.add),
+              label: const Text(
+                'Add Wine',
+                style: TextStyle(fontSize: 18),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.deepPurple.shade900,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 32),
+
+          // Show wines registered by this attendee
+          Text(
+            'Your Registered Wines',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey.shade700,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...provider.wines
+              .where((w) => w.registeredBy == provider.currentJudge?.id)
+              .map((wine) => Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: Colors.deepPurple.shade100,
+                        child: Text(
+                          '${wine.blindNumber}',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.deepPurple.shade900,
+                          ),
+                        ),
+                      ),
+                      title: Text(wine.name),
+                      subtitle: Text(
+                        [
+                          if (wine.winery != null) wine.winery,
+                          if (wine.vintage != null) wine.vintage,
+                        ].where((e) => e != null).join(' • '),
+                      ),
+                    ),
+                  ))
+              .toList(),
+
+          if (provider.wines
+              .where((w) => w.registeredBy == provider.currentJudge?.id)
+              .isEmpty)
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                'You haven\'t registered any wines yet',
+                style: TextStyle(color: Colors.grey.shade600),
+                textAlign: TextAlign.center,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Tab for rating wines
 class _RateWinesTab extends StatelessWidget {
   final List<Wine> wines;
   final Party party;
@@ -114,44 +490,11 @@ class _RateWinesTab extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              'No wines registered yet',
+              'No wines to rate',
               style: TextStyle(
                 fontSize: 18,
                 color: Colors.grey.shade600,
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Register a wine using the tab above',
-              style: TextStyle(color: Colors.grey.shade500),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (!party.isActive) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.lock,
-              size: 64,
-              color: Colors.grey.shade400,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Voting is closed',
-              style: TextStyle(
-                fontSize: 18,
-                color: Colors.grey.shade600,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'The host has closed voting for this party',
-              style: TextStyle(color: Colors.grey.shade500),
             ),
           ],
         ),
@@ -296,7 +639,7 @@ class _RateWinesTab extends StatelessWidget {
       builder: (context) => AlertDialog(
         title: const Text('Submit All Scores?'),
         content: const Text(
-          'Your scores will be finalized. You can still update them until the host closes voting.',
+          'Your scores will be finalized. You can still update them until the host locks scoring.',
         ),
         actions: [
           TextButton(
@@ -327,143 +670,54 @@ class _RateWinesTab extends StatelessWidget {
   }
 }
 
-class _RegisterWineTab extends StatelessWidget {
+/// Tab showing your submitted scores (read-only)
+class _YourScoresTab extends StatelessWidget {
+  final List<Wine> wines;
+  final PartyProvider provider;
+  final Party party;
+
+  const _YourScoresTab({
+    required this.wines,
+    required this.provider,
+    required this.party,
+  });
+
   @override
   Widget build(BuildContext context) {
-    return Consumer<PartyProvider>(
-      builder: (context, provider, _) {
-        final party = provider.currentParty;
-        if (party == null) return const SizedBox.shrink();
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: wines.length,
+      itemBuilder: (context, index) {
+        final wine = wines[index];
+        final score = provider.getScoreForWine(wine.id);
 
-        if (!party.isActive) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.lock,
-                  size: 64,
-                  color: Colors.grey.shade400,
+        return Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          child: ListTile(
+            leading: CircleAvatar(
+              backgroundColor: score != null
+                  ? Colors.green.shade100
+                  : Colors.grey.shade200,
+              child: Text(
+                '${wine.blindNumber}',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: score != null
+                      ? Colors.green.shade700
+                      : Colors.grey.shade700,
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  'Registration closed',
-                  style: TextStyle(
-                    fontSize: 18,
-                    color: Colors.grey.shade600,
-                  ),
-                ),
-              ],
+              ),
             ),
-          );
-        }
-
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Icon(
-                Icons.wine_bar,
-                size: 64,
-                color: Colors.deepPurple.shade300,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Register Your Wine',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.deepPurple.shade900,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Details will be hidden until the host reveals results',
-                style: TextStyle(color: Colors.grey.shade600),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                height: 56,
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const RegisterWineScreen(),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.add),
-                  label: const Text(
-                    'Add Wine',
-                    style: TextStyle(fontSize: 18),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.deepPurple.shade900,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 32),
-
-              // Show wines registered by this judge
-              Text(
-                'Your Registered Wines',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey.shade700,
-                ),
-              ),
-              const SizedBox(height: 12),
-              ...provider.wines
-                  .where((w) => w.registeredBy == provider.currentJudge?.id)
-                  .map((wine) => Card(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        child: ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor: Colors.deepPurple.shade100,
-                            child: Text(
-                              '${wine.blindNumber}',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.deepPurple.shade900,
-                              ),
-                            ),
-                          ),
-                          title: Text(wine.name),
-                          subtitle: Text(
-                            [
-                              if (wine.winery != null) wine.winery,
-                              if (wine.vintage != null) wine.vintage,
-                            ].where((e) => e != null).join(' • '),
-                          ),
-                        ),
-                      ))
-                  .toList(),
-
-              if (provider.wines
-                  .where((w) => w.registeredBy == provider.currentJudge?.id)
-                  .isEmpty)
-                Container(
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    'You haven\'t registered any wines yet',
-                    style: TextStyle(color: Colors.grey.shade600),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-            ],
+            title: Text(
+              party.resultsRevealed ? wine.name : 'Wine #${wine.blindNumber}',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            subtitle: score != null
+                ? Text('Your rating: ${score.rating}')
+                : const Text('Not rated'),
+            trailing: score != null
+                ? Icon(Icons.check_circle, color: Colors.green)
+                : Icon(Icons.remove_circle_outline, color: Colors.grey),
           ),
         );
       },

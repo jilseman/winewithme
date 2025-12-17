@@ -4,6 +4,7 @@ import 'host/host_dashboard_screen.dart';
 import 'judge/join_party_screen.dart';
 import 'package:provider/provider.dart';
 import '../providers/party_provider.dart';
+import '../models/models.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -83,7 +84,7 @@ class HomeScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 20),
 
-                  // Judge Button
+                  // Attend Party Button
                   SizedBox(
                     width: double.infinity,
                     height: 60,
@@ -96,9 +97,9 @@ class HomeScreen extends StatelessWidget {
                           ),
                         );
                       },
-                      icon: const Icon(Icons.how_to_vote, size: 28),
+                      icon: const Icon(Icons.group, size: 28),
                       label: const Text(
-                        'Join as Judge',
+                        'Attend a Party',
                         style: TextStyle(fontSize: 18),
                       ),
                       style: ElevatedButton.styleFrom(
@@ -230,20 +231,32 @@ class HomeScreen extends StatelessWidget {
                   itemCount: provider.parties.length,
                   itemBuilder: (context, index) {
                     final party = provider.parties[index];
+                    Color statusColor;
+                    String statusText;
+                    switch (party.status) {
+                      case PartyStatus.registering:
+                        statusColor = Colors.blue;
+                        statusText = 'Registering';
+                        break;
+                      case PartyStatus.active:
+                        statusColor = Colors.green;
+                        statusText = 'Scoring';
+                        break;
+                      case PartyStatus.locked:
+                        statusColor = Colors.grey;
+                        statusText = 'Locked';
+                        break;
+                    }
                     return ListTile(
                       leading: CircleAvatar(
-                        backgroundColor: party.isActive
-                            ? Colors.green.shade100
-                            : Colors.grey.shade200,
+                        backgroundColor: statusColor.withOpacity(0.2),
                         child: Icon(
                           Icons.wine_bar,
-                          color: party.isActive
-                              ? Colors.green.shade700
-                              : Colors.grey,
+                          color: statusColor,
                         ),
                       ),
                       title: Text(party.name),
-                      subtitle: Text('Code: ${party.partyCode}'),
+                      subtitle: Text('${party.partyCode} • $statusText'),
                       trailing: Icon(Icons.chevron_right),
                       onTap: () async {
                         Navigator.pop(context);

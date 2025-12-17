@@ -77,13 +77,13 @@ class _JoinPartyScreenState extends State<JoinPartyScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Icon(
-                Icons.how_to_vote,
+                Icons.wine_bar,
                 size: 80,
                 color: Colors.deepPurple.shade300,
               ),
               const SizedBox(height: 24),
               Text(
-                'Join as a Judge',
+                'Attend a Party',
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,

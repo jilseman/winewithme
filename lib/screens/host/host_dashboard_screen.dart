@@ -26,13 +26,7 @@ class HostDashboardScreen extends StatelessWidget {
               backgroundColor: Colors.deepPurple.shade900,
               foregroundColor: Colors.white,
               actions: [
-                IconButton(
-                  icon: Icon(
-                    party.isActive ? Icons.lock_open : Icons.lock,
-                  ),
-                  onPressed: () => _togglePartyStatus(context, provider),
-                  tooltip: party.isActive ? 'Close Voting' : 'Open Voting',
-                ),
+                _buildStatusActions(context, party, provider),
               ],
               bottom: const TabBar(
                 labelColor: Colors.white,
@@ -47,7 +41,7 @@ class HostDashboardScreen extends StatelessWidget {
             ),
             body: TabBarView(
               children: [
-                _PartyInfoTab(party: party),
+                _PartyInfoTab(party: party, provider: provider),
                 _WinesTab(wines: provider.wines, party: party),
                 _RankingsTab(
                   rankings: provider.getRankings(),
@@ -63,17 +57,43 @@ class HostDashboardScreen extends StatelessWidget {
     );
   }
 
-  void _togglePartyStatus(BuildContext context, PartyProvider provider) {
-    final isActive = provider.currentParty?.isActive ?? false;
+  Widget _buildStatusActions(BuildContext context, Party party, PartyProvider provider) {
+    IconData icon;
+    String tooltip;
+    VoidCallback onPressed;
 
+    switch (party.status) {
+      case PartyStatus.registering:
+        icon = Icons.play_arrow;
+        tooltip = 'Start the Party';
+        onPressed = () => _confirmStartParty(context, provider);
+        break;
+      case PartyStatus.active:
+        icon = Icons.lock;
+        tooltip = 'Lock Scoring';
+        onPressed = () => _confirmLockParty(context, provider);
+        break;
+      case PartyStatus.locked:
+        icon = Icons.lock_open;
+        tooltip = 'Unlock Scoring';
+        onPressed = () => provider.unlockParty();
+        break;
+    }
+
+    return IconButton(
+      icon: Icon(icon),
+      onPressed: onPressed,
+      tooltip: tooltip,
+    );
+  }
+
+  void _confirmStartParty(BuildContext context, PartyProvider provider) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(isActive ? 'Close Voting?' : 'Open Voting?'),
-        content: Text(
-          isActive
-              ? 'Judges will no longer be able to submit scores.'
-              : 'Judges will be able to submit scores again.',
+        title: const Text('Start the Party?'),
+        content: const Text(
+          'This will close wine registration and enable scoring. Attendees will be able to rate wines.',
         ),
         actions: [
           TextButton(
@@ -82,10 +102,38 @@ class HostDashboardScreen extends StatelessWidget {
           ),
           ElevatedButton(
             onPressed: () {
-              provider.togglePartyActive();
+              provider.startParty();
               Navigator.pop(context);
             },
-            child: Text(isActive ? 'Close' : 'Open'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+            ),
+            child: const Text('Start Party'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmLockParty(BuildContext context, PartyProvider provider) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Lock Scoring?'),
+        content: const Text(
+          'Attendees will no longer be able to submit or change scores.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              provider.lockParty();
+              Navigator.pop(context);
+            },
+            child: const Text('Lock'),
           ),
         ],
       ),
@@ -95,8 +143,9 @@ class HostDashboardScreen extends StatelessWidget {
 
 class _PartyInfoTab extends StatelessWidget {
   final Party party;
+  final PartyProvider provider;
 
-  const _PartyInfoTab({required this.party});
+  const _PartyInfoTab({required this.party, required this.provider});
 
   @override
   Widget build(BuildContext context) {
@@ -155,6 +204,11 @@ class _PartyInfoTab extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
+
+          // Status action card
+          _buildStatusCard(context),
+
+          const SizedBox(height: 16),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -174,69 +228,226 @@ class _PartyInfoTab extends StatelessWidget {
                   ),
                   const Divider(),
                   _InfoRow(
-                    icon: party.isActive ? Icons.check_circle : Icons.cancel,
+                    icon: _getStatusIcon(party.status),
                     label: 'Status',
-                    value: party.isActive ? 'Voting Open' : 'Voting Closed',
-                    valueColor:
-                        party.isActive ? Colors.green : Colors.red,
+                    value: _getStatusText(party.status),
+                    valueColor: _getStatusColor(party.status),
                   ),
                 ],
               ),
             ),
           ),
           const SizedBox(height: 24),
-          Consumer<PartyProvider>(
-            builder: (context, provider, _) {
-              return Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Statistics',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
                     children: [
-                      Text(
-                        'Statistics',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                      Expanded(
+                        child: _StatCard(
+                          icon: Icons.wine_bar,
+                          label: 'Wines',
+                          value: '${provider.wines.length}',
                         ),
                       ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _StatCard(
-                              icon: Icons.wine_bar,
-                              label: 'Wines',
-                              value: '${provider.wines.length}',
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: _StatCard(
-                              icon: Icons.people,
-                              label: 'Judges',
-                              value: '${provider.judges.length}',
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: _StatCard(
-                              icon: Icons.rate_review,
-                              label: 'Scores',
-                              value: '${provider.scores.length}',
-                            ),
-                          ),
-                        ],
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _StatCard(
+                          icon: Icons.people,
+                          label: 'Attendees',
+                          value: '${provider.judges.length}',
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _StatCard(
+                          icon: Icons.rate_review,
+                          label: 'Scores',
+                          value: '${provider.scores.length}',
+                        ),
                       ),
                     ],
                   ),
-                ),
-              );
-            },
+                ],
+              ),
+            ),
           ),
         ],
       ),
     );
+  }
+
+  Widget _buildStatusCard(BuildContext context) {
+    switch (party.status) {
+      case PartyStatus.registering:
+        return Card(
+          color: Colors.blue.shade50,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                Icon(Icons.people_outline, size: 48, color: Colors.blue.shade700),
+                const SizedBox(height: 12),
+                Text(
+                  'Registration Open',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue.shade900,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Attendees can join and register their wines. When everyone is ready, start the party to begin scoring.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.blue.shade700),
+                ),
+                const SizedBox(height: 16),
+                if (provider.wines.isNotEmpty)
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _confirmStart(context),
+                      icon: const Icon(Icons.play_arrow),
+                      label: const Text('Start the Party'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      case PartyStatus.active:
+        return Card(
+          color: Colors.green.shade50,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                Icon(Icons.how_to_vote, size: 48, color: Colors.green.shade700),
+                const SizedBox(height: 12),
+                Text(
+                  'Scoring in Progress',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green.shade900,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Attendees are rating wines. Lock scoring when everyone is done.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.green.shade700),
+                ),
+              ],
+            ),
+          ),
+        );
+      case PartyStatus.locked:
+        return Card(
+          color: Colors.grey.shade100,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                Icon(Icons.lock, size: 48, color: Colors.grey.shade700),
+                const SizedBox(height: 12),
+                Text(
+                  'Scoring Locked',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey.shade900,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Scoring is complete. View rankings to see the results!',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey.shade700),
+                ),
+              ],
+            ),
+          ),
+        );
+    }
+  }
+
+  void _confirmStart(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Start the Party?'),
+        content: const Text(
+          'This will close wine registration and enable scoring. Attendees will be able to rate wines.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              provider.startParty();
+              Navigator.pop(context);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+            ),
+            child: const Text('Start Party'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  IconData _getStatusIcon(PartyStatus status) {
+    switch (status) {
+      case PartyStatus.registering:
+        return Icons.edit;
+      case PartyStatus.active:
+        return Icons.play_circle;
+      case PartyStatus.locked:
+        return Icons.lock;
+    }
+  }
+
+  String _getStatusText(PartyStatus status) {
+    switch (status) {
+      case PartyStatus.registering:
+        return 'Registration Open';
+      case PartyStatus.active:
+        return 'Scoring Active';
+      case PartyStatus.locked:
+        return 'Scoring Locked';
+    }
+  }
+
+  Color _getStatusColor(PartyStatus status) {
+    switch (status) {
+      case PartyStatus.registering:
+        return Colors.blue;
+      case PartyStatus.active:
+        return Colors.green;
+      case PartyStatus.locked:
+        return Colors.grey;
+    }
   }
 
   String _formatDate(DateTime date) {
@@ -355,7 +566,7 @@ class _WinesTab extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Judges can register wines when they join',
+              'Attendees can register wines when they join',
               style: TextStyle(color: Colors.grey.shade500),
             ),
           ],
