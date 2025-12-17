@@ -319,6 +319,39 @@ class PartyProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Host can update any score when party is locked (before reveal)
+  Future<void> updateScoreAsHost(String scoreId, double newRating) async {
+    if (_currentParty == null) return;
+    if (!_currentParty!.isLocked) return; // Only allow editing when locked
+
+    final index = _scores.indexWhere((s) => s.id == scoreId);
+    if (index < 0) return;
+
+    final oldScore = _scores[index];
+    final updatedScore = Score(
+      id: oldScore.id,
+      partyId: oldScore.partyId,
+      wineId: oldScore.wineId,
+      judgeId: oldScore.judgeId,
+      judgeName: oldScore.judgeName,
+      rating: newRating,
+      notes: oldScore.notes,
+      createdAt: oldScore.createdAt,
+    );
+
+    _scores[index] = updatedScore;
+
+    // Save all scores
+    final allScores = await _storage.getScores();
+    final globalIndex = allScores.indexWhere((s) => s.id == scoreId);
+    if (globalIndex >= 0) {
+      allScores[globalIndex] = updatedScore;
+      await _storage.saveScores(allScores);
+    }
+
+    notifyListeners();
+  }
+
   Future<void> submitAllScores() async {
     if (_currentJudge == null) return;
 

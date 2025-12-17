@@ -52,7 +52,7 @@ class HostDashboardScreen extends StatelessWidget {
                   rankings: provider.getRankings(),
                   party: party,
                   scores: provider.scores,
-                  onReveal: () => provider.revealResults(),
+                  provider: provider,
                 ),
               ],
             ),
@@ -733,13 +733,13 @@ class _RankingsTab extends StatelessWidget {
   final List<WineRanking> rankings;
   final Party party;
   final List<Score> scores;
-  final VoidCallback onReveal;
+  final PartyProvider provider;
 
   const _RankingsTab({
     required this.rankings,
     required this.party,
     required this.scores,
-    required this.onReveal,
+    required this.provider,
   });
 
   @override
@@ -769,16 +769,42 @@ class _RankingsTab extends StatelessWidget {
 
     return Column(
       children: [
-        if (!party.resultsRevealed)
+        // Show review mode banner when locked
+        if (party.isLocked && !party.resultsRevealed)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            color: Colors.orange.shade100,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.edit_note, size: 18, color: Colors.orange.shade800),
+                const SizedBox(width: 8),
+                Text(
+                  'Review Mode: Tap scores to edit if needed',
+                  style: TextStyle(
+                    color: Colors.orange.shade800,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        // End Party button when locked
+        if (party.isLocked && !party.resultsRevealed)
           Padding(
             padding: const EdgeInsets.all(16),
-            child: ElevatedButton.icon(
-              onPressed: () => _confirmReveal(context),
-              icon: const Icon(Icons.visibility),
-              label: const Text('Reveal Wine Details'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.amber.shade600,
-                foregroundColor: Colors.white,
+            child: SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton.icon(
+                onPressed: () => _confirmEndParty(context),
+                icon: const Icon(Icons.celebration),
+                label: const Text('End Party & Reveal Results'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.amber.shade600,
+                  foregroundColor: Colors.white,
+                ),
               ),
             ),
           ),
@@ -827,41 +853,29 @@ class _RankingsTab extends StatelessWidget {
                           Text('Lowest: ${ranking.lowestScore}'),
                           Text('Total: ${ranking.totalScore.toStringAsFixed(1)}'),
                           const SizedBox(height: 16),
-                          Text(
-                            'Individual Scores',
-                            style: TextStyle(fontWeight: FontWeight.bold),
+                          Row(
+                            children: [
+                              Text(
+                                'Individual Scores',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              if (party.isLocked && !party.resultsRevealed) ...[
+                                const Spacer(),
+                                Text(
+                                  'Tap to edit',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.orange.shade700,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                           const SizedBox(height: 8),
                           ...scores
                               .where((s) => s.wineId == ranking.wine.id)
-                              .map((score) => Padding(
-                                    padding:
-                                        const EdgeInsets.symmetric(vertical: 4),
-                                    child: Row(
-                                      children: [
-                                        Text(score.judgeName),
-                                        const Spacer(),
-                                        Text(
-                                          '${score.rating}',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                        if (score.notes != null &&
-                                            score.notes!.isNotEmpty) ...[
-                                          const SizedBox(width: 8),
-                                          Tooltip(
-                                            message: score.notes!,
-                                            child: Icon(
-                                              Icons.note,
-                                              size: 16,
-                                              color: Colors.grey,
-                                            ),
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                  ))
+                              .map((score) => _buildScoreRow(context, score))
                               .toList(),
                         ],
                       ),
@@ -873,6 +887,105 @@ class _RankingsTab extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildScoreRow(BuildContext context, Score score) {
+    final canEdit = party.isLocked && !party.resultsRevealed;
+
+    return InkWell(
+      onTap: canEdit ? () => _showEditScoreDialog(context, score) : null,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          children: [
+            Text(score.judgeName),
+            const Spacer(),
+            Text(
+              '${score.rating}',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            if (score.notes != null && score.notes!.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              Tooltip(
+                message: score.notes!,
+                child: Icon(
+                  Icons.note,
+                  size: 16,
+                  color: Colors.grey,
+                ),
+              ),
+            ],
+            if (canEdit) ...[
+              const SizedBox(width: 8),
+              Icon(
+                Icons.edit,
+                size: 16,
+                color: Colors.orange.shade700,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showEditScoreDialog(BuildContext context, Score score) {
+    double newRating = score.rating;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: Text('Edit Score'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('${score.judgeName}\'s rating'),
+              const SizedBox(height: 16),
+              Text(
+                '${newRating.toStringAsFixed(1)}',
+                style: TextStyle(
+                  fontSize: 48,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.deepPurple.shade900,
+                ),
+              ),
+              Slider(
+                value: newRating,
+                min: 0,
+                max: 10,
+                divisions: 20,
+                onChanged: (value) {
+                  setState(() => newRating = value);
+                },
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('0'),
+                  Text('10'),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                provider.updateScoreAsHost(score.id, newRating);
+                Navigator.pop(context);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -912,13 +1025,13 @@ class _RankingsTab extends StatelessWidget {
     );
   }
 
-  void _confirmReveal(BuildContext context) {
+  void _confirmEndParty(BuildContext context) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Reveal Wine Details?'),
+        title: const Text('End Party & Reveal Results?'),
         content: const Text(
-          'This will show all wine names and details to everyone. This action cannot be undone.',
+          'This will reveal all wine names, details, and final rankings to everyone. This action cannot be undone.',
         ),
         actions: [
           TextButton(
@@ -927,7 +1040,7 @@ class _RankingsTab extends StatelessWidget {
           ),
           ElevatedButton(
             onPressed: () {
-              onReveal();
+              provider.revealResults();
               Navigator.pop(context);
             },
             style: ElevatedButton.styleFrom(
